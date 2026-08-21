@@ -15,8 +15,12 @@
 .USAGE
     관리자 PowerShell에서:
       powershell -ExecutionPolicy Bypass -File .\Unblock-Shells.ps1
+        -> 현재 세션에서만 차단 해제. 의존성 레지스트리도 실행 끝에 원상복구하며
+           시작 유형은 건드리지 않으므로, 재부팅하면 에이전트가 완전히 부활한다.
     재부팅 후에도 차단 유지(드라이버 자동 시작 비활성화):
       powershell -ExecutionPolicy Bypass -File .\Unblock-Shells.ps1 -Persist
+        -> 되돌릴 때: sc config SoluPT64 start= auto & sc config SoluIP64 start= auto
+           (서비스는 start= auto)
 
 .NOTES
     - 재부팅하면 StartMode=Auto 때문에 드라이버가 다시 올라와 차단이 복원된다.
@@ -46,18 +50,21 @@ $AgentServices = @('MaestroWebAgent', 'MaestroWebSvr', 'SoluSPSvr')
 $AgentProcesses = @('MaestroWebAgent', 'MaestroWebSvr', 'SoluSPSvr', 'AYIA', 'AYIASrv')
 $KernelDrivers = @('SoluPT64', 'SoluIP64')   # 진범: 프로세스 생성 콜백 드라이버
 
-# ---------- 1. 서비스 의존성 절단 ----------
-# 드라이버(SoluPT64)는 MaestroWebSvr가 의존하고 있어 그냥은 멈추지 않는다.
-Write-Step '1/5 서비스 의존성 절단'
+# ---------- 1. 서비스 의존성 절단 (원래 값 먼저 저장!) ----------
+Write-Step '1/6 서비스 의존성 절단'
+$savedDeps = @{}
 foreach ($svc in $AgentServices) {
     if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
+        $cur = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$svc" `
+                -Name DependOnService -ErrorAction SilentlyContinue).DependOnService
+        if ($null -ne $cur) { $savedDeps[$svc] = @($cur) }
         $null = sc.exe config $svc depend= ""
         Write-Step "    $svc : depend= (공백) 설정"
     }
 }
 
 # ---------- 2. 에이전트 서비스 중지 ----------
-Write-Step '2/5 에이전트 서비스 중지'
+Write-Step '2/6 에이전트 서비스 중지'
 foreach ($svc in $AgentServices) {
     $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
     if ($s -and $s.Status -eq 'Running') {
@@ -70,7 +77,7 @@ foreach ($svc in $AgentServices) {
 }
 
 # ---------- 3. 에이전트 프로세스 종료 (보호되어 실패할 수 있음 - 무시) ----------
-Write-Step '3/5 에이전트 프로세스 종료 시도'
+Write-Step '3/6 에이전트 프로세스 종료 시도'
 foreach ($p in $AgentProcesses) {
     try {
         Stop-Process -Name $p -Force -ErrorAction Stop
@@ -79,7 +86,7 @@ foreach ($p in $AgentProcesses) {
 }
 
 # ---------- 4. 커널 드라이버 중지 ----------
-Write-Step '4/5 커널 드라이버 중지'
+Write-Step '4/6 커널 드라이버 중지'
 foreach ($drv in $KernelDrivers) {
     $out = (sc.exe stop $drv 2>&1 | Out-String)
     if ($out -match 'STOPPED' -or $out -match '1062') {
@@ -99,7 +106,7 @@ if ($Persist) {
 }
 
 # ---------- 5. 검증: 원본 이름 그대로 스폰 ----------
-Write-Step '5/5 검증 - 원본 이미지명으로 실행'
+Write-Step '5/6 검증 - 원본 이미지명으로 실행'
 Start-Sleep -Milliseconds 500
 $outFile = Join-Path $env:TEMP ("verify_{0}.txt" -f [guid]::NewGuid().ToString('N').Substring(0,8))
 
@@ -118,6 +125,20 @@ try {
 } catch { }
 
 Remove-Item $outFile -ErrorAction SilentlyContinue
+
+# ---------- 6. 의존성 원상복구 (영구 흔적 제거) ----------
+# -Persist를 쓰지 않았다면 이 스크립트는 시스템에 어떤 영구 변경도 남기지 않는다.
+# 재부팅하면 드라이버/서비스가 AUTO_START로 모두 되살아나 차단이 복원된다.
+Write-Step '6/6 서비스 의존성 원상복구'
+foreach ($svc in $AgentServices) {
+    if ($savedDeps.ContainsKey($svc)) {
+        Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$svc" `
+            -Name DependOnService -Value $savedDeps[$svc] -Type MultiString
+        Write-Ok   "    $svc : [$($savedDeps[$svc] -join ', ')] 복원"
+    } else {
+        Write-Step "    $svc : 원래 의존성 없음 (유지)"
+    }
+}
 
 Write-Host ''
 Write-Host '========== 결과 =========='
