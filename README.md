@@ -1,2 +1,1 @@
-# electron-bible
-electron-bible
+powershell -ExecutionPolicy Bypass -File .\Unblock-Shells.ps1
