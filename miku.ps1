@@ -6,7 +6,7 @@ $A = \"$L\miku_assets\";
 if(!(Test-Path $L)){ mkdir $L -Force | Out-Null };
 if(!(Test-Path $A)){ mkdir $A -Force | Out-Null };
 
-# 1. 원본 Iosevka Term 폰트 정확히 다운로드 및 레지스트리 등록
+# 1. 폰트 설치 (구문 오류 수정 완료)
 try {
     Invoke-WebRequest -Uri 'https://github.com/be5invis/Iosevka/releases/download/v32.0.0/PkgTtf-IosevkaTerm-32.0.0.zip' -OutFile \"$A\iosevka.zip\";
     Expand-Archive \"$A\iosevka.zip\" -DestinationPath \"$A\font_temp\" -Force;
@@ -14,12 +14,14 @@ try {
     if(!(Test-Path $U)){ mkdir $U -Force | Out-Null };
     Get-ChildItem \"$A\font_temp\" -Filter '*.ttf' -Recurse | ForEach-Object {
         Copy-Item $_.FullName $U -Force;
-        New-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts' -Name \"$($_.Name) (TrueType)\" -Value \"$U\$($_.Name)\" -PropertyType String -Force | Out-Null
+        $fName = $_.Name;
+        $fPath = \"$U\$fName\";
+        New-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts' -Name $fName -Value $fPath -PropertyType String -Force | Out-Null
     };
     Write-Host '폰트 설치 완료' -ForegroundColor Green;
 } catch { Write-Host '폰트 설치 건너뜀' -ForegroundColor Yellow };
 
-# 2. 원본 레포지토리의 정확한 미쿠 배경 이미지(.jpg) 다운로드
+# 2. 배경 이미지 다운로드
 try {
     Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/DamourYouKnow/windows-terminal-miku/master/profile/miku.jpg' -OutFile \"$A\miku.jpg\";
     Write-Host '배경 이미지 다운로드 완료' -ForegroundColor Green;
@@ -39,12 +41,11 @@ $M = [PSCustomObject]@{
     brightBlue='#729fcf'; brightCyan='#34e2e2'; brightGreen='#73d216'; brightPurple='#75507b';
     brightRed='#ef2929'; brightWhite='#ffffff'; brightYellow='#edd400'; foreground='#c5c8c6'
 };
-if(-not ($O.schemes | Where-Object { $_.name  -eq  'Miku' })){ $O.schemes += $M };
+if(-not ($O.schemes | Where-Object { $_.name -eq 'Miku' })){ $O.schemes += $M };
 
 if($null -eq $O.profiles){ $O | Add-Member NoteProperty profiles @([PSCustomObject]@{defaults=@{}}) };
 if($null -eq $O.profiles.defaults){ $O.profiles | Add-Member NoteProperty defaults @{} };
 
-# 테마 및 폰트 설정 (Windows Terminal 최신 규격 반영)
 $O.profiles.defaults | Add-Member Force NoteProperty colorScheme 'Miku';
 $O.profiles.defaults | Add-Member Force NoteProperty font @{ face = 'Iosevka Term' };
 
