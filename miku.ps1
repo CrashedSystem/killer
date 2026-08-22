@@ -1,61 +1,54 @@
-pwsh.exe -NoProfile -ExecutionPolicy Bypass -Command "& {
-$ErrorActionPreference = 'Stop';
-Write-Host '=== 미쿠 테마 및 폰트 재적용 중 ===' -ForegroundColor Cyan;
-$L = \"$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\";
-$A = \"$L\miku_assets\";
-if(!(Test-Path $L)){ mkdir $L -Force | Out-Null };
-if(!(Test-Path $A)){ mkdir $A -Force | Out-Null };
+$ErrorActionPreference = 'Stop'
+Write-Host "=== Miku 테마, 이미지, 폰트 최종 적용 시작 ===" -ForegroundColor Cyan
 
-# 1. 폰트 설치 (구문 오류 수정 완료)
+# 1. 경로 및 Asset 설정
+$L = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState"
+$A = "$L\miku_assets"
+if(!(Test-Path $A)){ mkdir $A -Force | Out-Null }
+
+# 2. 폰트 설치 (Iosevka Term)
 try {
-    Invoke-WebRequest -Uri 'https://github.com/be5invis/Iosevka/releases/download/v32.0.0/PkgTtf-IosevkaTerm-32.0.0.zip' -OutFile \"$A\iosevka.zip\";
-    Expand-Archive \"$A\iosevka.zip\" -DestinationPath \"$A\font_temp\" -Force;
-    $U = \"$env:LOCALAPPDATA\Microsoft\Windows\Fonts\";
-    if(!(Test-Path $U)){ mkdir $U -Force | Out-Null };
-    Get-ChildItem \"$A\font_temp\" -Filter '*.ttf' -Recurse | ForEach-Object {
-        Copy-Item $_.FullName $U -Force;
-        $fName = $_.Name;
-        $fPath = \"$U\$fName\";
-        New-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts' -Name $fName -Value $fPath -PropertyType String -Force | Out-Null
-    };
-    Write-Host '폰트 설치 완료' -ForegroundColor Green;
-} catch { Write-Host '폰트 설치 건너뜀' -ForegroundColor Yellow };
+    Invoke-WebRequest -Uri "https://github.com/be5invis/Iosevka/releases/download/v32.0.0/PkgTtf-IosevkaTerm-32.0.0.zip" -OutFile "$A\iosevka.zip"
+    Expand-Archive "$A\iosevka.zip" -DestinationPath "$A\font_temp" -Force
+    $U = "$env:LOCALAPPDATA\Microsoft\Windows\Fonts"
+    if(!(Test-Path $U)){ mkdir $U -Force | Out-Null }
+    Get-ChildItem "$A\font_temp" -Filter "*.ttf" -Recurse | ForEach-Object {
+        Copy-Item $_.FullName $U -Force
+        New-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts" -Name $_.Name -Value "$U\$($_.Name)" -PropertyType String -Force | Out-Null
+    }
+} catch { Write-Host "폰트 설치 실패" -ForegroundColor Yellow }
 
-# 2. 배경 이미지 다운로드
-try {
-    Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/DamourYouKnow/windows-terminal-miku/master/profile/miku.jpg' -OutFile \"$A\miku.jpg\";
-    Write-Host '배경 이미지 다운로드 완료' -ForegroundColor Green;
-} catch { Write-Host '배경 이미지 다운로드 실패' -ForegroundColor Yellow };
+# 3. 이미지 다운로드 (GitHub 정확한 경로)
+$ImgPath = "$A\miku.png"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/DamourYouKnow/windows-terminal-miku/master/profile/miku.png" -OutFile $ImgPath
 
-# 3. settings.json 설정 반영
-$S = \"$L\settings.json\";
-if(!(Test-Path $S)){ '{}' | Out-File -Encoding utf8 $S };
-$J = (Get-Content $S -Raw -Encoding utf8);
-if([string]::IsNullOrWhiteSpace($J)){ $J = '{}' };
-$O = $J | ConvertFrom-Json;
+# 4. settings.json 설정
+$S = "$L\settings.json"
+if(!(Test-Path $S)){ "{}" | Out-File -Encoding utf8 $S }
+$J = (Get-Content $S -Raw -Encoding utf8)
+if([string]::IsNullOrWhiteSpace($J)){ $J = "{}" }
+$O = $J | ConvertFrom-Json
 
-if($null -eq $O.schemes){ $O | Add-Member NoteProperty schemes @() };
+# 스킴 추가
+if($null -eq $O.schemes){ $O | Add-Member -NotePropertyName "schemes" -NotePropertyValue @() -Force }
 $M = [PSCustomObject]@{
     name='Miku'; background='#121212'; black='#2b2b2b'; blue='#6ca4dc'; cyan='#8ad7f8'; green='#8ae234';
     purple='#ad7fa8'; red='#ef2929'; white='#eeeeec'; yellow='#fce94f'; brightBlack='#555753';
     brightBlue='#729fcf'; brightCyan='#34e2e2'; brightGreen='#73d216'; brightPurple='#75507b';
     brightRed='#ef2929'; brightWhite='#ffffff'; brightYellow='#edd400'; foreground='#c5c8c6'
-};
-if(-not ($O.schemes | Where-Object { $_.name -eq 'Miku' })){ $O.schemes += $M };
+}
+if(-not ($O.schemes | Where-Object { $_.name -eq 'Miku' })){ $O.schemes += $M }
 
-if($null -eq $O.profiles){ $O | Add-Member NoteProperty profiles @([PSCustomObject]@{defaults=@{}}) };
-if($null -eq $O.profiles.defaults){ $O.profiles | Add-Member NoteProperty defaults @{} };
+# 프로필 기본값 설정
+if($null -eq $O.profiles){ $O | Add-Member -NotePropertyName "profiles" -NotePropertyValue ([PSCustomObject]@{defaults=@{}}) -Force }
+if($null -eq $O.profiles.defaults){ $O.profiles | Add-Member -NotePropertyName "defaults" -NotePropertyValue @{} -Force }
 
-$O.profiles.defaults | Add-Member Force NoteProperty colorScheme 'Miku';
-$O.profiles.defaults | Add-Member Force NoteProperty font @{ face = 'Iosevka Term' };
+# 테마, 폰트, 배경 이미지 적용
+$O.profiles.defaults | Add-Member -NotePropertyName "colorScheme" -NotePropertyValue "Miku" -Force
+$O.profiles.defaults | Add-Member -NotePropertyName "font" -NotePropertyValue @{ face = "Iosevka Term" } -Force
+$O.profiles.defaults | Add-Member -NotePropertyName "backgroundImage" -NotePropertyValue $ImgPath -Force
+$O.profiles.defaults | Add-Member -NotePropertyName "backgroundImageOpacity" -NotePropertyValue 0.35 -Force
+$O.profiles.defaults | Add-Member -NotePropertyName "backgroundImageStretchMode" -NotePropertyValue "uniformToFill" -Force
 
-$Bg = \"$A\miku.jpg\";
-if(Test-Path $Bg){
-    $O.profiles.defaults | Add-Member Force NoteProperty backgroundImage ($Bg -replace '\\','\\');
-    $O.profiles.defaults | Add-Member Force NoteProperty backgroundImageOpacity 0.35;
-    $O.profiles.defaults | Add-Member Force NoteProperty backgroundImageStretchMode 'uniformToFill';
-};
-
-$O | ConvertTo-Json -Depth 10 | Out-File -Encoding utf8 $S;
-Write-Host '=== 재설정 완료! 터미널을 완전히 껐다 켜주세요. ===' -ForegroundColor Cyan;
-}"
+$O | ConvertTo-Json -Depth 10 | Out-File -Encoding utf8 $S
+Write-Host "=== 모든 세팅 완료! 터미널을 다시 켜세요. ===" -ForegroundColor Cyan
