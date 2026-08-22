@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-Write-Host "=== Windows Terminal Miku Theme All-in-One Installer ===" -ForegroundColor Cyan
+Write-Host "=== Windows Terminal Miku Theme All-in-One Installer (Fixed) ===" -ForegroundColor Cyan
 
 # 1. 관리자 권한 확인
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -10,23 +10,40 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     exit
 }
 
-# 2. Iosevka 폰트 동적 다운로드 및 시스템 전역 등록
+# 2. Iosevka 폰트 동적 다운로드 및 시스템 전역 등록 (개선된 방식)
 Write-Host "[1/4] Iosevka 폰트 최신 버전 다운로드 및 시스템 등록 중..." -ForegroundColor Yellow
 $apiUrl = "https://api.github.com/repos/be5invis/Iosevka/releases/latest"
 $headers = @{ "User-Agent" = "PowerShell-Script" }
 $release = Invoke-RestMethod -Uri $apiUrl -Headers $headers
-$asset = $release.assets | Where-Object { $_.name -match "term.*\.zip$" -or $_.name -match "iosevka-term" } | Select-Object -First 1
-if (-not $asset) { $asset = $release.assets | Where-Object { $_.name -match "iosevka-term" -and $_.name -match "\.zip$" } | Select-Object -First 1 }
+
+# TTF 포맷 또는 SuperTTC 포맷 중 안전하게 다운로드 가능하도록 패키지 필터링 완화
+$asset = $release.assets | Where-Object { $_.name -match "ttf-iosevka-term-.*\.zip$" -or $_.name -match "super-ttc-iosevka-term" } | Select-Object -First 1
+if (-not $asset) {
+    # 대체재로 이름에 iosevka와 term, zip이 들어가는 첫 번째 에셋 선택
+    $asset = $release.assets | Where-Object { $_.name -match "iosevka" -and $_.name -match "term" -and $_.name -match "\.zip$" } | Select-Object -First 1
+}
+
+if (-not $asset) {
+    Write-Host "[오류] GitHub에서 Iosevka 폰트 패키지를 찾지 못했습니다. 인터넷 연결을 확인해주세요." -ForegroundColor Red
+    exit
+}
 
 $ZipPath = "$env:TEMP\$($asset.name)"
 $ExtractPath = "$env:TEMP\iosevka_extracted"
 if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force }
 if (Test-Path $ExtractPath) { Remove-Item $ExtractPath -Recurse -Force }
 
+Write-Host "-> 다운로드 대상: $($asset.name)" -ForegroundColor DarkGray
 Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $ZipPath
 Expand-Archive -Path $ZipPath -DestinationPath $ExtractPath -Force
 
-$FontFiles = Get-ChildItem -Path $ExtractPath -Filter "*.ttf" -Recurse
+# TTF 또는 TTC 파일 모두 지원하도록 확장자 검색 확장
+$FontFiles = Get-ChildItem -Path $ExtractPath -Include "*.ttf", "*.ttc" -Recurse
+if ($FontFiles.Count -eq 0) {
+    Write-Host "[오류] 압축 해제된 폴더에서 폰트 파일(.ttf 또는 .ttc)을 찾을 수 없습니다." -ForegroundColor Red
+    exit
+}
+
 $SysFontDir = "$env:SystemRoot\Fonts"
 $RegistryPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"
 
@@ -36,7 +53,7 @@ foreach ($Font in $FontFiles) {
     $BaseName = [System.IO.Path]::GetFileNameWithoutExtension($Font.Name)
     Set-ItemProperty -Path $RegistryPath -Name "$BaseName (TrueType)" -Value $Font.Name -Force
 }
-Write-Host "-> 폰트 시스템 등록 완료!" -ForegroundColor Green
+Write-Host "-> 폰트 시스템 등록 완료! ($($FontFiles.Count)개 파일)" -ForegroundColor Green
 
 # 3. 미쿠 배경 이미지 다운로드 및 배치
 Write-Host "[2/4] 미쿠 테마 이미지 다운로드 중..." -ForegroundColor Yellow
@@ -88,9 +105,16 @@ $O.schemes += $MikuScheme
 if ($null -eq $O.profiles) { $O | Add-Member -NotePropertyName "profiles" -NotePropertyValue ([PSCustomObject]@{}) -Force }
 if ($null -eq $O.profiles.defaults) { $O.profiles | Add-Member -NotePropertyName "defaults" -NotePropertyValue ([PSCustomObject]@{}) -Force }
 
-# defaults에 최종 마스터 설정 적용 (상반신 잘림 방지를 위해 uniform 적용)
+# 폰트 이름 안전장치 (실제 설치된 폰트 파일명 기반으로 적용)
+$AppliedFontFace = "Iosevka Term"
+if ($FontFiles[0].Name -match "Term") {
+    $AppliedFontFace = "Iosevka Term"
+} else {
+    $AppliedFontFace = [System.IO.Path]::GetFileNameWithoutExtension($FontFiles[0].Name)
+}
+
 $MasterSettings = @{
-    "fontFace" = "Iosevka Term"
+    "fontFace" = $AppliedFontFace
     "fontSize" = 11
     "colorScheme" = "Miku"
     "backgroundImage" = "ms-appdata:///local/miku_assets/miku.png"
@@ -109,7 +133,6 @@ foreach ($key in $MasterSettings.Keys) {
     }
 }
 
-# 개별 프로필 동기화
 if ($O.profiles.list) {
     foreach ($p in $O.profiles.list) {
         foreach ($key in $MasterSettings.Keys) {
