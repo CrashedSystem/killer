@@ -1,1 +1,1 @@
-powershell -ExecutionPolicy Bypass -File .\Unblock-Shells.ps1
+pwsh.exe -ExecutionPolicy Bypass -File .\Unblock-Shells.ps1
