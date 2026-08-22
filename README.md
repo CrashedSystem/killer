@@ -43,7 +43,7 @@ Write-Host "[+] Winget 설치 완료! 터미널 창을 닫고 새로 연 뒤 아
 
 ```
 winget install --id Microsoft.WindowsTerminal -e --accept-source-agreements --accept-package-agreements
-winget install --id Python.Python.3 -e --accept-source-agreements --accept-package-agreements
+winget install --id Python.Python.3.12 -e --accept-source-agreements --accept-package-agreements
 winget install --id Git.Git -e --accept-source-agreements --accept-package-agreements
 
 Write-Host "[+] 모든 개발 도구 설치 완료!" -ForegroundColor Green
