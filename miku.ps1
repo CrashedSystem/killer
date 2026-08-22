@@ -1,109 +1,60 @@
-# Windows Terminal Miku + Iosevka Term 폰트 자동 적용 스크립트
-$ErrorActionPreference = "Stop"
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -Command "& {
+$ErrorActionPreference = 'Stop';
+Write-Host '=== 미쿠 테마 및 폰트 재적용 중 ===' -ForegroundColor Cyan;
+$L = \"$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\";
+$A = \"$L\miku_assets\";
+if(!(Test-Path $L)){ mkdir $L -Force | Out-Null };
+if(!(Test-Path $A)){ mkdir $A -Force | Out-Null };
 
-Write-Host "=== Iosevka Term 폰트 및 미쿠 테마 자동 설치 시작 ===" -ForegroundColor Cyan
-
-# 1. 경로 설정
-$LocalDir = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState"
-$AssetDir = "$LocalDir\miku_assets"
-
-if (!(Test-Path $LocalDir)) {
-    Write-Host "[오류] Windows Terminal이 설치되어 있지 않거나 실행 기록이 없습니다. 터미널을 먼저 한 번 켜주세요." -ForegroundColor Red
-    exit
-}
-
-if (!(Test-Path $AssetDir)) {
-    New-Item -ItemType Directory -Force -Path $AssetDir | Out-Null
-}
-
-# 2. Iosevka Term 폰트 다운로드 및 등록 (GitHub 최신 릴리스 패키지 활용)
-Write-Host "Iosevka Term 폰트 다운로드 및 설치 중..." -ForegroundColor Green
-$FontZipPath = "$AssetDir\iosevka.zip"
+# 1. 원본 Iosevka Term 폰트 정확히 다운로드 및 레지스트리 등록
 try {
-    # Iosevka Term 폰트 패키지 Direct 링크 (TTF 세트)
-    Invoke-WebRequest -Uri "https://github.com/be5invis/Iosevka/releases/download/v32.0.0/PkgTtf-IosevkaTerm-32.0.0.zip" -OutFile $FontZipPath
-    Expand-Archive -Path $FontZipPath -DestinationPath "$AssetDir\font_temp" -Force
-    
-    $UserFontDir = "$env:LOCALAPPDATA\Microsoft\Windows\Fonts"
-    if (!(Test-Path $UserFontDir)) { New-Item -ItemType Directory -Force -Path $UserFontDir | Out-Null }
-    
-    Get-ChildItem -Path "$AssetDir\font_temp" -Filter "*.ttf" -Recurse | ForEach-Object {
-        Copy-Item $_.FullName -Destination $UserFontDir -Force
-        $FontName = $_.Name
-        New-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts" -Name "$FontName (TrueType)" -Value "$UserFontDir\$FontName" -PropertyType String -Force | Out-Null
-    }
-    Write-Host "Iosevka Term 폰트 설치 완료!" -ForegroundColor Green
-} catch {
-    Write-Host "[경고] 폰트 자동 다운로드 실패, 시스템 기본 폰트로 대체됩니다." -ForegroundColor Yellow
-}
+    Invoke-WebRequest -Uri 'https://github.com/be5invis/Iosevka/releases/download/v32.0.0/PkgTtf-IosevkaTerm-32.0.0.zip' -OutFile \"$A\iosevka.zip\";
+    Expand-Archive \"$A\iosevka.zip\" -DestinationPath \"$A\font_temp\" -Force;
+    $U = \"$env:LOCALAPPDATA\Microsoft\Windows\Fonts\";
+    if(!(Test-Path $U)){ mkdir $U -Force | Out-Null };
+    Get-ChildItem \"$A\font_temp\" -Filter '*.ttf' -Recurse | ForEach-Object {
+        Copy-Item $_.FullName $U -Force;
+        New-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts' -Name \"$($_.Name) (TrueType)\" -Value \"$U\$($_.Name)\" -PropertyType String -Force | Out-Null
+    };
+    Write-Host '폰트 설치 완료' -ForegroundColor Green;
+} catch { Write-Host '폰트 설치 건너뜀' -ForegroundColor Yellow };
 
-# 3. 미쿠 배경 이미지 다운로드
-Write-Host "미쿠 테마 리소스 다운로드 중..." -ForegroundColor Green
-$BgPath = "$AssetDir\miku.png"
+# 2. 원본 레포지토리의 정확한 미쿠 배경 이미지(.jpg) 다운로드
 try {
-    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/DamourYouKnow/windows-terminal-miku/master/demo.png" -OutFile $BgPath
-} catch {
-    Write-Host "[경고] 배경 이미지 다운로드 실패, 색상 테마만 적용됩니다." -ForegroundColor Yellow
-}
+    Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/DamourYouKnow/windows-terminal-miku/master/profile/miku.jpg' -OutFile \"$A\miku.jpg\";
+    Write-Host '배경 이미지 다운로드 완료' -ForegroundColor Green;
+} catch { Write-Host '배경 이미지 다운로드 실패' -ForegroundColor Yellow };
 
-# 4. settings.json 설정 병합
-$SettingsPath = "$LocalDir\settings.json"
-if (!(Test-Path $SettingsPath)) { "{}" | Out-File -Encoding utf8 $SettingsPath }
+# 3. settings.json 설정 반영
+$S = \"$L\settings.json\";
+if(!(Test-Path $S)){ '{}' | Out-File -Encoding utf8 $S };
+$J = (Get-Content $S -Raw -Encoding utf8);
+if([string]::IsNullOrWhiteSpace($J)){ $J = '{}' };
+$O = $J | ConvertFrom-Json;
 
-$JsonContent = Get-Content $SettingsPath -Raw -Encoding utf8
-if ([string]::IsNullOrWhiteSpace($JsonContent)) { $JsonContent = "{}" }
-$JsonObject = $JsonContent | ConvertFrom-Json
+if($null -eq $O.schemes){ $O | Add-Member NoteProperty schemes @() };
+$M = [PSCustomObject]@{
+    name='Miku'; background='#121212'; black='#2b2b2b'; blue='#6ca4dc'; cyan='#8ad7f8'; green='#8ae234';
+    purple='#ad7fa8'; red='#ef2929'; white='#eeeeec'; yellow='#fce94f'; brightBlack='#555753';
+    brightBlue='#729fcf'; brightCyan='#34e2e2'; brightGreen='#73d216'; brightPurple='#75507b';
+    brightRed='#ef2929'; brightWhite='#ffffff'; brightYellow='#edd400'; foreground='#c5c8c6'
+};
+if(-not ($O.schemes | Where-Object { $_.name  -eq  'Miku' })){ $O.schemes += $M };
 
-if ($null -eq $JsonObject.schemes) {
-    $JsonObject | Add-Member -MemberType NoteProperty -Name "schemes" -Value @()
-}
+if($null -eq $O.profiles){ $O | Add-Member NoteProperty profiles @([PSCustomObject]@{defaults=@{}}) };
+if($null -eq $O.profiles.defaults){ $O.profiles | Add-Member NoteProperty defaults @{} };
 
-# 미쿠 컬러 스킴 정의
-$MikuScheme = [PSCustomObject]@{
-    name = "Miku"
-    background = "#121212"
-    black = "#2b2b2b"
-    blue = "#6ca4dc"
-    cyan = "#8ad7f8"
-    green = "#8ae234"
-    purple = "#ad7fa8"
-    red = "#ef2929"
-    white = "#eeeeec"
-    yellow = "#fce94f"
-    brightBlack = "#555753"
-    brightBlue = "#729fcf"
-    brightCyan = "#34e2e2"
-    brightGreen = "#73d216"
-    brightPurple = "#75507b"
-    brightRed = "#ef2929"
-    brightWhite = "#ffffff"
-    brightYellow = "#edd400"
-    foreground = "#c5c8c6"
-}
+# 테마 및 폰트 설정 (Windows Terminal 최신 규격 반영)
+$O.profiles.defaults | Add-Member Force NoteProperty colorScheme 'Miku';
+$O.profiles.defaults | Add-Member Force NoteProperty font @{ face = 'Iosevka Term' };
 
-if (-not ($JsonObject.schemes | Where-Object { $_.name -eq "Miku" })) {
-    $JsonObject.schemes += $MikuScheme
-}
+$Bg = \"$A\miku.jpg\";
+if(Test-Path $Bg){
+    $O.profiles.defaults | Add-Member Force NoteProperty backgroundImage ($Bg -replace '\\','\\');
+    $O.profiles.defaults | Add-Member Force NoteProperty backgroundImageOpacity 0.35;
+    $O.profiles.defaults | Add-Member Force NoteProperty backgroundImageStretchMode 'uniformToFill';
+};
 
-# 프로필 기본값에 테마, Iosevka Term 폰트, 배경 이미지 지정
-if ($null -eq $JsonObject.profiles) {
-    $JsonObject | Add-Member -MemberType NoteProperty -Name "profiles" -Value @([PSCustomObject]@{ defaults = @{} })
-}
-if ($null -eq $JsonObject.profiles.defaults) {
-    $JsonObject.profiles | Add-Member -MemberType NoteProperty -Name "defaults" -Value @{}
-}
-
-$JsonObject.profiles.defaults | Add-Member -Force -MemberType NoteProperty -Name "colorScheme" -Value "Miku"
-$JsonObject.profiles.defaults | Add-Member -Force -MemberType NoteProperty -Name "font" -Value @{ "face" = "Iosevka Term" }
-
-if (Test-Path $BgPath) {
-    $NormalizedBgPath = $BgPath -replace '\\', '\\'
-    $JsonObject.profiles.defaults | Add-Member -Force -MemberType NoteProperty -Name "backgroundImage" -Value $NormalizedBgPath
-    $JsonObject.profiles.defaults | Add-Member -Force -MemberType NoteProperty -Name "backgroundImageOpacity" -Value 0.35
-    $JsonObject.profiles.defaults | Add-Member -Force -MemberType NoteProperty -Name "backgroundImageStretchMode" -Value "uniformToFill"
-}
-
-# 5. 저장
-$JsonObject | ConvertTo-Json -Depth 10 | Out-File -Encoding utf8 $SettingsPath
-
-Write-Host "=== 모든 설정 완료! Windows Terminal을 재시작하세요. ===" -ForegroundColor Cyan
+$O | ConvertTo-Json -Depth 10 | Out-File -Encoding utf8 $S;
+Write-Host '=== 재설정 완료! 터미널을 완전히 껐다 켜주세요. ===' -ForegroundColor Cyan;
+}"
