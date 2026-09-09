@@ -48,3 +48,32 @@ winget install --id Git.Git -e --accept-source-agreements --accept-package-agree
 winget install --id sst.opencode -e --accept-source-agreements --accept-package-agreements
 
 Write-Host "[+] 모든 개발 도구 설치 완료!" -ForegroundColor Green
+```
+
+## WinKeyFix — LUCOMS K667 윈도우키 리매핑
+
+물리 윈도우키가 `VK 0xFF / Scan 0x00`(무효 키) 신호를 보내는 키보드에서, 전역 LL 키보드 훅으로 이를 가로채 정상 `VK_LWIN`으로 바꿔 주는 도구입니다. 설치 불필요(PowerShell + C# Add-Type), 관리자 권한 불필요, 재부팅 불필요.
+
+> 코드는 `WinKeyFix/` 폴더 안에 `WinKeyFix.ps1` / `WinKeyFix.cmd`로 들어 있습니다.
+
+```powershell
+# 1) 수동 실행 — 즉시 윈도우키 동작 (더블클릭으로 실행해도 됨)
+.\WinKeyFix\WinKeyFix.cmd
+
+#     PowerShell로 직접 실행
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File .\WinKeyFix\WinKeyFix.ps1
+
+# 2) 로그온 시 자동 실행 예약 (다음 재로그인부터 적용)
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File .\WinKeyFix\WinKeyFix.ps1 -Install
+
+# 3) 예약 작업 제거
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File .\WinKeyFix\WinKeyFix.ps1 -Uninstall
+
+# 4) 자가 진단 — 0xFF -> VK_LWIN 변환이 잘 도는지 확인
+pwsh.exe -NoProfile -ExecutionPolicy Bypass -File .\WinKeyFix\WinKeyFix.ps1 -SelfTest
+```
+
+```
+SelfTest 출력 예시:
+PASS: 0xFF -> VK_LWIN 변환 정상 동작합니다.
+```
