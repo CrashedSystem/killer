@@ -1,6 +1,9 @@
 ```powershell
-cd C:\Users\CKIRUser\Downloads
+cd ~/Downdoads/killer-main/killer-main
 pwsh.exe -ExecutionPolicy Bypass -File .\Unblock-Shells.ps1
+``
+
+```powershell
 pwsh.exe -ep bypass
 Import-Module .\Autokiller.ps1
 Pause-JnessProcesses
